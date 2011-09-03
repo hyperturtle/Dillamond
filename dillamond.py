@@ -1,15 +1,8 @@
-#Sophisticated route lookup and URL generation
-#Named routes
-#Redirect routes
-#Wildcard paths before and after static parts
-#Sub-domain support built-in
-#Conditional matching based on domain, cookies, HTTP method (RESTful), and more
-#Easily extensible utilizing custom condition functions and route generation functions
-
 import re
 import time
 import json
-from os.path import join
+from os.path import join, dirname
+from os import makedirs
 from webob import Request,Response
 
 #Template/Views: Mako
@@ -62,6 +55,9 @@ def filter_nossl(request):
     else:
         return False
 
+def noop(*args,**kwargs):
+    pass
+
 #RESPONDER
 
 class Responder(object):
@@ -86,14 +82,14 @@ class Responder(object):
 
     def view(self, viewname, **data):
     
-        view = self.mylookup.get_template(viewname + '.html').render(**data)
+        view = self.mylookup.get_template(viewname + '.mako').render(**data)
         
         self.res.status = 202
         self.res.content_type = 'text/html'
         self.res.content_length = len(view)
         
         self.start_response(self.res.status, self.res.headerlist)
-        
+        print(secondsToStr(time.clock()-self.start_time))
         return view
     
     def json( self, data ):
@@ -125,16 +121,9 @@ class Dillamond:
     def __init__(self, settings = {}):
         self.mylookup = TemplateLookup(
             directories = [join(settings['root'],rpath) for rpath in settings['view_paths']],
-            #filesystem_checks = True,
-            #module_directory = join(settings['root'],settings['viewcache_path']),
-            #imports = ['import json'],
             output_encoding='utf-8')
         
-        #self.static_path = join(settings['root'],settings['static_path'])
-        #self.static_asset_path = join(settings['root'],settings['static_asset_path'])
-        #self.asset_path = join(settings['root'],settings['asset_path'])
         self.routes = []
-        self.genlist = []
         self._part_matcher = re.compile(r'{.*?}')
         
     def _partspath(self, path):
@@ -144,31 +133,22 @@ class Dillamond:
             a = parts[part][1:-1].split('=')
             d.append(a)
         return d
-        
-    def _regexpath(self, path):
-        return '^' + re.sub(self._part_matcher,'(.*?)',path) + '$'
     
     def error(self, fn):
         self.error_handler = fn
         return fn
 
-    def route(self, path, req = [], **kwargs):
+    def route(self, path, req = [], generate = False, **kwargs):
         def wrapped(fn):
             self.routes.append((path,{
-                'regex': self._regexpath(path),
-                'name':fn.__name__,
+                'regex': '^' + re.sub(self._part_matcher,'(.*?)',path) + '$',
                 'function':fn,
                 'reqs':req,
                 'kwargs':kwargs,
-                'parts':self._partspath(path)
+                'parts':self._partspath(path),
+                'generate':generate
                 }))
 
-            return fn
-        return wrapped
-    
-    def generate(self,path):
-        def wrapped(fn):
-            self.genlist.append( (path,fn) )
             return fn
         return wrapped
     
@@ -186,24 +166,6 @@ class Dillamond:
             if requirements(requirement) == False:
                 return False
         return True
-    
-    def parse(self, req):
-        m = None
-        for reg,route in self.routes:
-            m = re.match(route['regex'],req.path)
-            if m and self._meetsreqs(req,route['reqs']):
-                break
-                
-        else:
-            return False
-        bindings = route['kwargs']
-        for part in route['parts']:
-            if len(part) == 2:
-                bindings[part[0]] = part[1]
-        for part in xrange(len(m.groups())):
-            if m.group(part+1):
-                bindings[route['parts'][part][0]] = m.group(part+1)
-        return bindings,route
 
     def execute(self, res, req):
         m = None
@@ -211,7 +173,6 @@ class Dillamond:
             m = re.match(route['regex'],req.path)
             if m and self._meetsreqs(req,route['reqs']):
                 break
-                
         else:
             return False
         bindings = route['kwargs']
@@ -232,8 +193,84 @@ class Dillamond:
             return str(self.execute(res, req))
         return wrapped
     
-    def generatehtml(self, genfunc):
-        def rawview(viewname, **data):
-            view = self.mylookup.get_template(viewname + '.html').render
-            return view(**data)
-        return genfunc(rawview)
+    def generatehtml(self, path):
+        for path,route in self.routes:
+            if path == path:
+                res = Responder(noop, {}, self.mylookup, 0)
+                def rawview(viewname, **data):
+                    view = self.mylookup.get_template(viewname + '.mako').render
+                    return view(**data)
+                return route['function'](res)
+
+    def genlist(self):
+        class res:
+            def view(self, viewname,**other):
+                return viewname
+        
+        out = []
+        for path,route in self.routes:
+            if route['generate']:
+                filename = self.mylookup.get_template(route['function'](res())+'.mako').filename
+                out.append((path,filename))
+        return out
+
+    def main(self, options):
+        import sys
+        import getopt
+        import errno
+
+        try:
+            opts, args = getopt.getopt(options, "lt:gsv", ["view=","list","static=","generate","server"])
+        except getopt.GetoptError, err:
+            print str(err)
+            sys.exit(2)
+        
+        generate = False
+        serve = False
+        verbose = False
+        list = False
+        statichtml = 'static'
+        view = False
+        
+        for o, a in opts:
+            if o in ("-g","--generate"):
+                generate = True
+            elif o in ("-t","--static"):
+                statichtml = a
+            elif o in ("--view"):
+                view = a
+            elif o in ("-s","--serve"):
+                serve = True
+            elif o == "-v":
+                verbose = True
+            elif o in ("-l","--list"):
+                list = True
+            else:
+                assert False, "unhandle option"
+        
+        if generate or list:
+            for path,filename in self.genlist():
+                
+                if view and view != path:
+                    continue
+                    
+                if list:
+                    print path + " <= " + join(path[1:],'index.html') + ' <= ' + filename
+                
+                if generate:
+                    path = join(statichtml , path[1:], 'index.html')
+                    try:
+                        makedirs(dirname(path))
+                    except OSError as exc:
+                        if exc.errno == errno.EEXIST:
+                            pass
+                        else: raise
+                    print "Generating " + path
+                    f = open(path,'w')
+                    f.write(self.generatehtml(path))
+                    f.close()
+                
+        if serve:
+            from wsgiref.simple_server import make_server
+            server = make_server('', 8080, self.wsgiapp())
+            server.serve_forever()
