@@ -153,13 +153,13 @@ class Dillamond:
         return wrapped
     
     def post(self ,path, req = [], **kwargs):
-        return self.route(path, req=req+filter_method(['POST']), **kwargs)
+        return self.route(path, req=req+[filter_method(['POST'])], **kwargs)
     
     def get(self,path, req = [], **kwargs):
-        return self.route(path, req=req+filter_method(['GET']), **kwargs)
+        return self.route(path, req=req+[filter_method(['GET'])], **kwargs)
     
-    def getpost(self,path, req = [], **kwargs):
-        return self.route(path, req=req+filter_method(['GET','POST']), **kwargs)
+    def getnpost(self,path, req = [], **kwargs):
+        return self.route(path, req=req+[filter_method(['GET','POST'])], **kwargs)
     
     def _meetsreqs(self, requirement, reqs):
         for requirements in reqs:
