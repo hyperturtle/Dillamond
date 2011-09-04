@@ -2,21 +2,43 @@
 
 ##Features
 
-- simple wsgi app/framework built on top of webob and mako
-- less than 300 lines of code
-- includes a dev wsgi server
-- decorator based uri to function mappings
-- static generation of files
+- Simple WSGI framework built on top of webob and mako
+- Less than 500 lines of code
+- Includes a development WSGI server using wsgiref
+- Decorator based uri to function mappings
+- Static generation of files
+
+##Dependancies
+
+- [Mako](http://www.makotemplates.org/) -- `easy_install Mako`
+- [WebOb](http://webob.org/) -- `easy_install webob`
+
 
 ##Installation
-
     cp dillamond.py /your_website_path/
 
 ##Usage
 
-See sample.py for a sample application
+    #Create the application
+    app = Dillamond({'root': abspath(dirname(__file__)), 'view_paths': ['views/']})
+    
+    #Decorate functions to accept on uri matchers
+    #app.route(path, req = [], generate = False, **kwargs)
+    
+    @app.route('/') #path matching '' and '/'
+    def index(res):
+        return res.view('index') #return the template 'index.mako' in view_paths
+    
+    @app.route('/action/?') #matches '/action' and '/action/'
+    def jsonaction(res,action):
+        return res.json('{"status":"okay"}')
 
-##Dependancies
+###Start development server on port 8080
+    python sample.py -s -p 8080
 
-- mako
-- webob
+###List files in the static generation list
+    python sample.py -l
+
+###Generating static files
+    python sample.py -g
+
