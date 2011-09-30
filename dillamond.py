@@ -26,7 +26,7 @@ THE SOFTWARE.
 import re
 import time
 
-from os.path import join, dirname
+from os.path import join, dirname, relpath
 from os import makedirs
 from webob import Request, Response
 
@@ -146,6 +146,15 @@ class Responder(object):
         allows access to the POST variables
         """
         return self.req.str_POST
+    
+    @property
+    def get(self):
+        """
+        allows access to the GET variables
+        """
+        return self.req.str_GET
+    
+    
         
     def cookie(self, name, value = None, max_age=60*60*3, **kwargs):
         """cookie modifification
@@ -176,7 +185,7 @@ class Responder(object):
         self.res.content_length = len(view)
         
         self.start_response(self.res.status, self.res.headerlist)
-        print(seconds_to_str(time.clock()-self.start_time))
+        #print(seconds_to_str(time.clock()-self.start_time))
         return view
     
     def json( self, data ):
@@ -190,7 +199,7 @@ class Responder(object):
         self.res.charset = None
         self.res.content_length = None
         self.start_response(self.res.status, self.res.headerlist)
-        print(seconds_to_str(time.clock()-self.start_time))
+        #print(seconds_to_str(time.clock()-self.start_time))
         return str(data)
 
     def text( self, data ):
@@ -293,9 +302,12 @@ class Dillamond:
         return self.route(path,
         req=req+[filter_method(['GET'])],
         **kwargs)
+    
+    def generate(self, path, req = None, **kwargs):
+        return self.route(path,req,generate = True, **kwargs)
 
     ###########################################################################
-    # Decorators
+    # The good parts
     ###########################################################################
 
     def wsgiapp(self):
@@ -332,8 +344,8 @@ class Dillamond:
         """generates static content based on path
         returns the generated string
         """
-        for path, route in self.routes:
-            if path == path:
+        for p, route in self.routes:
+            if p == path:
                 res = Responder(noop, {}, self.mylookup, 0)
                 return route['function'](res)
 
@@ -347,7 +359,7 @@ class Dillamond:
         for path, route in self.routes:
             if route['generate']:
                 mako_template = route['function'](responder)+'.mako'
-                filename = self.mylookup.get_template(mako_template).filename
+                filename = relpath(self.mylookup.get_template(mako_template).filename)
                 out.append((path, filename))
         return out
 
