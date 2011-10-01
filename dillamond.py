@@ -26,27 +26,16 @@ THE SOFTWARE.
 import re
 import time
 
-from os.path import join, dirname, relpath
-from os import makedirs
+from os.path import join, relpath
+
 from webob import Request, Response
 
 #Template/Views: Mako
 from mako.lookup import TemplateLookup
 
 #import json
-#from mako.template import Template
-#from mako.runtime import Context
-#from mako import exceptions
-#from urllib import quote
 
 #HELPERS
-
-def seconds_to_str(time_in_seconds):
-    """Pretty print time"""
-    return "%d:%02d:%02d.%03d" % \
-        reduce(lambda ll,b : divmod(ll[0],b) + ll[1:],
-            [(time_in_seconds*1000,),1000,60,60])
-
 def meetsreqs(request, requirements):
     """used to test an array of requirements
     """
@@ -142,16 +131,10 @@ class Responder(object):
     
     @property
     def post(self):
-        """
-        allows access to the POST variables
-        """
         return self.req.str_POST
     
     @property
     def get(self):
-        """
-        allows access to the GET variables
-        """
         return self.req.str_GET
     
     
@@ -185,7 +168,6 @@ class Responder(object):
         self.res.content_length = len(view)
         
         self.start_response(self.res.status, self.res.headerlist)
-        #print(seconds_to_str(time.clock()-self.start_time))
         return view
     
     def json( self, data ):
@@ -199,7 +181,6 @@ class Responder(object):
         self.res.charset = None
         self.res.content_length = None
         self.start_response(self.res.status, self.res.headerlist)
-        #print(seconds_to_str(time.clock()-self.start_time))
         return str(data)
 
     def text( self, data ):
@@ -239,8 +220,7 @@ class Dillamond:
     def __init__(self, settings):
         """inialize app with settings"""
         self.mylookup = TemplateLookup(
-            directories = [join(settings['root'],rpath) \
-                for rpath in settings['view_paths']],
+            directories = [join(settings['root'],rpath) for rpath in settings['view_paths']],
             output_encoding='utf-8')
         
         self.routes = []
@@ -278,7 +258,7 @@ class Dillamond:
         def wrapped(func):
             """decorate the function and bind the route to it"""
             self.routes.append((path, {
-                'regex': '^' + re.sub(self._part_matcher,'(.*?)',path) + '$',
+                'regex': re.compile('^' + re.sub(self._part_matcher,'(.*?)',path) + '$'),
                 'function':func,
                 'reqs':req,
                 'kwargs':kwargs,
@@ -292,16 +272,12 @@ class Dillamond:
     def post(self, path, req = None, **kwargs):
         """wrapper around route to simplify specifying a POST method"""
         req = req or []
-        return self.route(path,
-        req=req+[filter_method(['POST'])],
-        **kwargs)
+        return self.route(path, req=req+[filter_method(['POST'])], **kwargs)
     
     def get(self, path, req = None, **kwargs):
         """wrapper around route to simplify specifying a GET method"""
         req = req or []
-        return self.route(path,
-        req=req+[filter_method(['GET'])],
-        **kwargs)
+        return self.route(path, req=req+[filter_method(['GET'])], **kwargs)
     
     def generate(self, path, req = None, **kwargs):
         return self.route(path,req,generate = True, **kwargs)
@@ -371,6 +347,8 @@ class Dillamond:
         import sys
         import getopt
         import errno
+        from os import makedirs
+        from os.path import dirname
 
         try:
             opts, args = getopt.getopt(options,
